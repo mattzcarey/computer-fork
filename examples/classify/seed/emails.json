@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "from": "billing@acme.example",
+    "subject": "Invoice 4821 overdue",
+    "body": "Your invoice is 30 days overdue. Please pay today to avoid suspension."
+  },
+  {
+    "id": 2,
+    "from": "deals@shop.example",
+    "subject": "50% off everything!!!",
+    "body": "Our biggest sale of the year ends tonight. Click here to shop now."
+  },
+  {
+    "id": 3,
+    "from": "sam@team.example",
+    "subject": "Prod is down",
+    "body": "The API has been returning 500s for ten minutes. Can you take a look?"
+  },
+  {
+    "id": 4,
+    "from": "newsletter@blog.example",
+    "subject": "This week in Workers",
+    "body": "Five new posts about Durable Objects and Dynamic Workers."
+  },
+  {
+    "id": 5,
+    "from": "alex@team.example",
+    "subject": "Lunch Friday?",
+    "body": "Want to grab lunch on Friday? No rush to reply."
+  }
+]
