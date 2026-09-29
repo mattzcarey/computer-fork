@@ -1,9 +1,11 @@
 import { WorkspaceRuntimeBridge } from "../../runtime/bridge.js";
 import { assertRuntimeValue, WorkspaceRuntimeCapability } from "../../runtime/capability.js";
 import { dynamicWorkerEgress, type WorkspaceEgressPolicy } from "../../runtime/egress.js";
+import { isWorkspaceModule } from "../../runtime/module.js";
 import type {
   ModuleExecutionEnvelope,
   ModuleExecutionInput,
+  WorkspaceModule,
   WorkspaceModuleBackend,
   WorkspaceModuleBackendHandle,
   WorkspaceModuleBackendHost,
@@ -24,9 +26,11 @@ export interface WorkerJavaScriptBackendOptions {
   modules?: Record<string, string>;
   /**
    * Host-owned capability modules installed under reserved ws:* specifiers.
-   * Caller source may import them, but cannot provide or replace them.
+   * Caller source may import them, but cannot provide or replace them. A
+   * module from `defineModule` exposes each of its exports by name; any
+   * other value exposes a single `call(method, ...args)` export.
    */
-  trustedModules?: Record<`ws:${string}`, WorkspaceTrustedModule>;
+  trustedModules?: Record<`ws:${string}`, WorkspaceTrustedModule | WorkspaceModule>;
   defaultTimeoutMs?: number;
   maxTimeoutMs?: number;
   maxSourceBytes?: number;
@@ -354,7 +358,7 @@ class JavaScriptBackendHandle implements WorkspaceModuleBackendHandle {
         cwd: input.cwd ?? this.#options.root,
         capability,
         configuredModules: this.#options.modules ?? {},
-        trustedModuleNames: Object.keys(this.#options.trustedModules ?? {}),
+        trustedModules: trustedModuleExports(this.#options.trustedModules),
         maxSourceBytes: this.#options.maxSourceBytes,
         maxCapabilityBytes: this.#options.maxCapabilityBytes,
       });
@@ -392,6 +396,7 @@ class JavaScriptBackendHandle implements WorkspaceModuleBackendHandle {
           git: this.#host.git,
           artifacts: this.#host.artifacts,
           trustedModules: this.#options.trustedModules,
+          executionId: id,
           allowGitNetwork: this.#options.allowGitNetwork ?? false,
           allowArtifactNetwork: this.#options.allowArtifactNetwork ?? false,
           maxPayloadBytes: this.#options.maxCapabilityBytes,
@@ -895,6 +900,17 @@ class JavaScriptBackendHandle implements WorkspaceModuleBackendHandle {
       }
     });
   }
+}
+
+function trustedModuleExports(
+  modules: WorkerJavaScriptBackendOptions["trustedModules"],
+): Record<string, readonly string[] | undefined> {
+  return Object.fromEntries(
+    Object.entries(modules ?? {}).map(([specifier, module]) => [
+      specifier,
+      isWorkspaceModule(module) ? Object.keys(module.exports) : undefined,
+    ]),
+  );
 }
 
 function encodeEvent(event: WorkspaceRuntimeEvent): Uint8Array {

@@ -19,7 +19,11 @@ export interface BuildModuleGraphOptions {
   cwd: string;
   capability: WorkspaceRuntimeCapability;
   configuredModules: Record<string, string>;
-  trustedModuleNames?: string[];
+  /**
+   * Host-installed ws:* modules. The value lists a defined module's export
+   * names, or is undefined for a call-style module that exports only `call`.
+   */
+  trustedModules?: Record<string, readonly string[] | undefined>;
   maxSourceBytes: number;
   maxCapabilityBytes: number;
   maxModules?: number;
@@ -40,7 +44,7 @@ export async function buildModuleGraph(options: BuildModuleGraphOptions) {
   const maxModules = options.maxModules ?? 128;
   const maxDepth = options.maxDepth ?? 32;
   const trustedModuleNames = new Set<string>(TRUSTED_MODULES);
-  for (const name of options.trustedModuleNames ?? []) {
+  for (const name of Object.keys(options.trustedModules ?? {})) {
     if (
       !/^ws:[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) ||
       TRUSTED_MODULES.includes(name as (typeof TRUSTED_MODULES)[number])
@@ -136,9 +140,12 @@ export async function buildModuleGraph(options: BuildModuleGraphOptions) {
     const toCapabilities = relativeModule(directory, CAPABILITIES_MODULE);
     modules[`${prefix}ws:git`] = { js: gitModule(toCapabilities) };
     modules[`${prefix}ws:artifacts`] = { js: artifactsModule(toCapabilities) };
-    for (const specifier of options.trustedModuleNames ?? []) {
+    for (const [specifier, exportNames] of Object.entries(options.trustedModules ?? {})) {
       modules[`${prefix}${specifier}`] = {
-        js: trustedModule(toCapabilities, specifier),
+        js:
+          exportNames === undefined
+            ? trustedModule(toCapabilities, specifier)
+            : definedModule(toCapabilities, specifier, exportNames),
       };
     }
     for (const [specifier, source] of Object.entries(options.configuredModules)) {
@@ -308,6 +315,20 @@ function trustedModule(capabilitiesImport: string, specifier: string) {
   return `
     import { call as hostCall } from ${JSON.stringify(capabilitiesImport)};
     export const call = (method, ...args) => hostCall(${JSON.stringify(`trusted/${specifier}`)}, "call", [method, ...args]);
+  `;
+}
+
+// Each export forwards its single argument; a call with no argument sends
+// none, so the host sees `undefined` rather than a JSON null.
+function definedModule(
+  capabilitiesImport: string,
+  specifier: string,
+  exportNames: readonly string[],
+) {
+  const namespace = JSON.stringify(`trusted/${specifier}`);
+  return `
+    import { call as hostCall } from ${JSON.stringify(capabilitiesImport)};
+    ${exportNames.map((name) => `export const ${name} = (input) => hostCall(${namespace}, ${JSON.stringify(name)}, input === undefined ? [] : [input]);`).join("\n")}
   `;
 }
 

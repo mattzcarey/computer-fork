@@ -6,7 +6,7 @@ import type {
   WorkspaceRuntimeValue,
   WorkspaceStub,
 } from "../src/index.js";
-import { Workspace } from "../src/index.js";
+import { defineModule, Workspace } from "../src/index.js";
 
 export interface Env {
   HOST: DurableObjectNamespace<HostDO>;
@@ -32,6 +32,37 @@ export class HostDO extends DurableObject<Env> {
             "math-kit": "export const double = (value) => value * 2;",
           },
           trustedModules: {
+            "ws:issues": defineModule({
+              description: "Issue tracker used by the defined-module tests.",
+              exports: {
+                create: {
+                  description: "Create an issue and echo what the host received.",
+                  input: {
+                    type: "object",
+                    properties: { title: { type: "string" } },
+                    required: ["title"],
+                  },
+                  execute(input, context) {
+                    return {
+                      input,
+                      executionId: context.executionId,
+                      hasSignal: context.signal instanceof AbortSignal,
+                    };
+                  },
+                },
+                count: {
+                  execute: (input) => (input === undefined ? "no input" : "input"),
+                },
+                checksum: {
+                  execute: (input) => new Uint8Array([...(input as Uint8Array)].reverse()),
+                },
+                fail: {
+                  execute: () => {
+                    throw new Error("issue tracker is offline");
+                  },
+                },
+              },
+            }),
             "ws:test-host": {
               async call(method, args) {
                 if (method === "invalid-result") return new Date() as never;

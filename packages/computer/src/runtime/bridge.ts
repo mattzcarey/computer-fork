@@ -3,13 +3,15 @@ import { RpcTarget } from "cloudflare:workers";
 import type { ArtifactClient } from "../artifacts/index.js";
 import type { GitClient } from "../git/index.js";
 import { assertRuntimeValue, type WorkspaceRuntimeCapability } from "./capability.js";
-import type { WorkspaceTrustedModule } from "./types.js";
+import { isWorkspaceModule } from "./module.js";
+import type { WorkspaceModule, WorkspaceTrustedModule } from "./types.js";
 
 export class WorkspaceRuntimeBridge extends RpcTarget {
   readonly #capability: WorkspaceRuntimeCapability;
   readonly #git: GitClient | undefined;
   readonly #artifacts: ArtifactClient | undefined;
-  readonly #trustedModules: Record<string, WorkspaceTrustedModule>;
+  readonly #trustedModules: Record<string, WorkspaceTrustedModule | WorkspaceModule>;
+  readonly #executionId: string;
   readonly #allowGitNetwork: boolean;
   readonly #allowArtifactNetwork: boolean;
   readonly #maxPayloadBytes: number;
@@ -33,7 +35,8 @@ export class WorkspaceRuntimeBridge extends RpcTarget {
     integrations: {
       git?: GitClient;
       artifacts?: ArtifactClient;
-      trustedModules?: Record<string, WorkspaceTrustedModule>;
+      trustedModules?: Record<string, WorkspaceTrustedModule | WorkspaceModule>;
+      executionId?: string;
       allowGitNetwork?: boolean;
       allowArtifactNetwork?: boolean;
       maxPayloadBytes?: number;
@@ -51,6 +54,7 @@ export class WorkspaceRuntimeBridge extends RpcTarget {
     this.#git = integrations.git;
     this.#artifacts = integrations.artifacts;
     this.#trustedModules = integrations.trustedModules ?? {};
+    this.#executionId = integrations.executionId ?? "";
     this.#allowGitNetwork = integrations.allowGitNetwork ?? false;
     this.#allowArtifactNetwork = integrations.allowArtifactNetwork ?? false;
     this.#maxPayloadBytes = integrations.maxPayloadBytes ?? 1024 * 1024;
@@ -226,16 +230,36 @@ export class WorkspaceRuntimeBridge extends RpcTarget {
     args: unknown[],
     context: { signal: AbortSignal; deadline: number },
   ) {
-    const suffix = ".call";
-    const specifier = name.endsWith(suffix) ? name.slice("trusted/".length, -suffix.length) : "";
-    const trusted = this.#trustedModules[specifier];
-    if (!trusted) {
+    // Export names are identifiers and never contain a dot, so the last
+    // dot separates the specifier (which may contain dots) from the member.
+    const target = name.slice("trusted/".length);
+    const dot = target.lastIndexOf(".");
+    const specifier = dot === -1 ? "" : target.slice(0, dot);
+    const member = target.slice(dot + 1);
+    const trusted = Object.hasOwn(this.#trustedModules, specifier)
+      ? this.#trustedModules[specifier]
+      : undefined;
+    if (!trusted || (!isWorkspaceModule(trusted) && member !== "call")) {
       throw new Error(`Unknown trusted Workspace module call ${JSON.stringify(name)}.`);
+    }
+    const callContext = { ...context, executionId: this.#executionId };
+    if (isWorkspaceModule(trusted)) {
+      const entry = Object.hasOwn(trusted.exports, member) ? trusted.exports[member] : undefined;
+      if (!entry) {
+        throw new Error(
+          `Workspace module ${JSON.stringify(specifier)} has no export ${JSON.stringify(member)}.`,
+        );
+      }
+      const input = args[0];
+      assertBridgeValues([input], { allowBytes: true, allowUndefined: true });
+      const result = await entry.execute(input, callContext);
+      assertBridgeValues([result], { allowBytes: true, allowUndefined: true });
+      return result ?? null;
     }
     const method = String(args[0]);
     const callArgs = args.slice(1);
     assertBridgeValues(callArgs);
-    const result = await trusted.call(method, callArgs, context);
+    const result = await trusted.call(method, callArgs, callContext);
     assertBridgeValues([result]);
     return result;
   }
@@ -359,9 +383,12 @@ function isGitNetworkCommand(argv: string[] | undefined) {
 
 function assertBridgeValues(
   values: unknown[],
+  options: { allowBytes?: boolean; allowUndefined?: boolean } = {},
 ): asserts values is import("./types.js").WorkspaceRuntimeValue[] {
   const seen = new Set<object>();
-  const visit = (value: unknown): void => {
+  const visit = (value: unknown, root: boolean): void => {
+    if (root && value === undefined && options.allowUndefined) return;
+    if (options.allowBytes && value instanceof Uint8Array) return;
     if (
       value === null ||
       typeof value === "boolean" ||
@@ -373,17 +400,17 @@ function assertBridgeValues(
       throw new Error("Trusted module values must be JSON-compatible.");
     if (seen.has(value)) throw new Error("Trusted module values must be acyclic.");
     seen.add(value);
-    if (Array.isArray(value)) for (const item of value) visit(item);
+    if (Array.isArray(value)) for (const item of value) visit(item, false);
     else {
       const prototype = Object.getPrototypeOf(value);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error("Trusted module values must contain only plain objects.");
       }
-      for (const item of Object.values(value as Record<string, unknown>)) visit(item);
+      for (const item of Object.values(value as Record<string, unknown>)) visit(item, false);
     }
     seen.delete(value);
   };
-  for (const value of values) visit(value);
+  for (const value of values) visit(value, true);
 }
 
 function decodeBytes(value: unknown): string | Uint8Array {

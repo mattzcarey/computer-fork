@@ -417,7 +417,7 @@ on a computerd instance.
 | `@cloudflare/computer` | The `Workspace` wrapper, `workspace.runtime`, stub types, the R2 mount, and proxy classes. |
 | `@cloudflare/computer/backends/container` | `CloudflareContainerBackend` and `withWorkspaceContainer`. Pulls in the computerd / capnweb sync plumbing. |
 | `@cloudflare/computer/backends/worker-shell` | `WorkerShellBackend` and the bundled just-bash runtime. |
-| `@cloudflare/computer/backends/worker-javascript` | `WorkerJavaScriptBackend`, configured libraries, durable imports, `node:fs/promises`, and trusted `ws:git` / `ws:artifacts`. |
+| `@cloudflare/computer/backends/worker-javascript` | `WorkerJavaScriptBackend`, configured libraries, durable imports, `node:fs/promises`, trusted `ws:git` / `ws:artifacts`, and host modules built with `defineModule`. |
 | `@cloudflare/computer/tools` | AI SDK tools for agents: `read`, `ls`, `find`, `grep`, `write`, `edit`, `delete`, and optional `exec` and `publish`. |
 | `@cloudflare/computer/git` | Opt-in `isomorphic-git` glue for checkouts inside the workspace. |
 | `@cloudflare/computer/assets` | `createAssets` — share a workspace file to R2 as a presigned URL. |

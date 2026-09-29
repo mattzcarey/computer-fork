@@ -9,8 +9,65 @@ export interface WorkspaceTrustedModule {
   call(
     method: string,
     args: WorkspaceRuntimeValue[],
-    context?: { signal: AbortSignal; deadline: number },
+    context?: WorkspaceModuleCallContext,
   ): Promise<WorkspaceRuntimeValue>;
+}
+
+/** What the host knows about the isolated call it is serving. */
+export interface WorkspaceModuleCallContext {
+  /** Identifier of the execution that made the call. */
+  executionId: string;
+  /** Aborted when the call passes its deadline or the execution is cancelled. */
+  signal: AbortSignal;
+  /** Epoch milliseconds after which the caller stops waiting. */
+  deadline: number;
+}
+
+/**
+ * A JSON Schema describing an export's input or output. Schemas document the
+ * module for callers; the runtime does not validate against them.
+ */
+export type WorkspaceModuleSchema = boolean | { readonly [keyword: string]: unknown };
+
+/**
+ * Values that cross between isolated code and a defined module: JSON values
+ * plus bytes.
+ */
+export type WorkspaceModuleValue =
+  | null
+  | boolean
+  | number
+  | string
+  | Uint8Array
+  | WorkspaceModuleValue[]
+  | { [key: string]: WorkspaceModuleValue };
+
+/** One named export of a module created with `defineModule`. */
+export interface WorkspaceModuleExport {
+  description?: string;
+  input?: WorkspaceModuleSchema;
+  output?: WorkspaceModuleSchema;
+  /**
+   * Run the export on the host. `input` is the single argument the isolated
+   * caller passed, or `undefined` when it passed none. Returning `undefined`
+   * resolves the caller with `null`.
+   */
+  execute(
+    // biome-ignore lint/suspicious/noExplicitAny: schemas describe the input; they do not type it.
+    input: any,
+    context: WorkspaceModuleCallContext,
+  ): WorkspaceModuleValue | undefined | Promise<WorkspaceModuleValue | undefined>;
+}
+
+/** The argument to `defineModule`. */
+export interface WorkspaceModuleDefinition {
+  description?: string;
+  exports: Record<string, WorkspaceModuleExport>;
+}
+
+/** A host module created with `defineModule`. */
+export interface WorkspaceModule extends WorkspaceModuleDefinition {
+  readonly exports: Readonly<Record<string, WorkspaceModuleExport>>;
 }
 
 export type WorkspaceRuntimeValue =

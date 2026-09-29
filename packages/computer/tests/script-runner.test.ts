@@ -96,6 +96,73 @@ describe("WorkspaceRuntime", () => {
     });
   });
 
+  it("exposes each export of a defined module as a named import", async () => {
+    const response = await runtime({
+      id: "defined-module",
+      source: `
+        import { create, count, checksum } from "ws:issues";
+        import * as issues from "ws:issues";
+        export default async () => ({
+          created: await create({ title: "Bug" }),
+          withoutInput: await count(),
+          reversed: Array.from(await checksum(new Uint8Array([1, 2, 3]))),
+          exports: Object.keys(issues).sort(),
+        });
+      `,
+    });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(JSON.parse(text), text).toMatchObject({
+      result: {
+        status: "completed",
+        value: {
+          created: {
+            input: { title: "Bug" },
+            executionId: "defined-module",
+            hasSignal: true,
+          },
+          withoutInput: "no input",
+          reversed: [3, 2, 1],
+          exports: ["checksum", "count", "create", "fail"],
+        },
+      },
+    });
+  });
+
+  it("surfaces a defined module's errors to the calling code", async () => {
+    const response = await runtime({
+      source: `
+        import { fail } from "ws:issues";
+        export default async () => {
+          try {
+            await fail();
+            return "no error";
+          } catch (error) {
+            return error.message;
+          }
+        };
+      `,
+    });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(JSON.parse(text), text).toMatchObject({
+      result: { status: "completed", value: "issue tracker is offline" },
+    });
+  });
+
+  it("rejects imports of names a defined module does not export", async () => {
+    const response = await runtime({
+      source: `
+        import { missing } from "ws:issues";
+        export default () => missing;
+      `,
+    });
+    const text = await response.text();
+    expect(JSON.parse(text), text).toMatchObject({
+      result: { status: "failed" },
+    });
+  });
+
   it("round-trips bytes and marker-shaped plain objects without codec collisions", async () => {
     const response = await runtime({
       source: `

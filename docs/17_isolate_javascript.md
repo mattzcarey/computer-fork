@@ -172,6 +172,49 @@ import {
 
 These modules are sandbox-side shims over host RPC. Loader bindings, credentials, Durable Object storage, and unrestricted Workspace objects never enter user code. The host bridge checks the backend's fixed read/read-write authority on every mutation. Artifacts methods fail clearly when no Artifacts binding is configured.
 
+### Host modules
+
+A backend can install its own host capabilities under further `ws:*` specifiers through `trustedModules`. A module built with `defineModule` exposes each of its exports by name:
+
+```ts
+import { defineModule } from "@cloudflare/computer";
+import { WorkerJavaScriptBackend } from "@cloudflare/computer/backends/worker-javascript";
+
+new WorkerJavaScriptBackend({
+  loader: env.LOADER,
+  trustedModules: {
+    "ws:issues": defineModule({
+      description: "Issue tracker for the connected project.",
+      exports: {
+        create: {
+          description: "Open an issue and return its number.",
+          input: {
+            type: "object",
+            properties: { title: { type: "string" } },
+            required: ["title"],
+          },
+          async execute(input, { executionId, signal }) {
+            return await tracker.create(input.title, { signal });
+          },
+        },
+      },
+    }),
+  },
+});
+```
+
+```js
+import { create } from "ws:issues";
+
+export default async () => create({ title: "Build is red" });
+```
+
+Each export takes one argument and runs `execute` on the host with it, or with `undefined` when the caller passed none. Arguments and results are JSON values or `Uint8Array`; a result of `undefined` reaches the caller as `null`. `execute` receives the calling execution's identifier, an `AbortSignal` that fires at the host-call deadline or on cancellation, and the deadline itself. An error thrown by `execute` rejects the caller's promise with the same message. Importing a name the module does not export fails the execution.
+
+Descriptions and the `input` / `output` JSON Schemas describe the module to callers. The runtime keeps them with the module but does not validate against them.
+
+A `trustedModules` value that is not built with `defineModule` is a call-style module: it has a single `call(method, args, context)` method, and isolated code reaches it through one `call(method, ...args)` export. Its values are JSON only.
+
 Caller modules and durable files cannot shadow `node:fs`, `node:fs/promises`, or `ws:*`.
 
 Path confinement rejects lexical escapes and every symlink component before an operation. These checks are not an atomic inode-style “resolve beneath root” primitive: do not treat one isolate capability as a security boundary against a separate, more privileged principal concurrently replacing paths in the same mutable Workspace. Deployments requiring that adversarial concurrency need a future transactional DOFS primitive or separate Workspace identities.
