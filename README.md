@@ -60,6 +60,9 @@ public surface. Each is a Worker workspace with its own README.
 - [`examples/worker-javascript`](examples/worker-javascript) — mirrors
   `worker-shell`, but `exec` evaluates an ECMAScript module in a Dynamic
   Worker instead of running a shell command.
+- [`examples/classify`](examples/classify) — gives Worker JavaScript modules a
+  `classify` function backed by the Jev decision model through AI Gateway,
+  so generated code can label and filter records such as emails.
 - [`examples/egress`](examples/egress) — sends one URL through the container,
   Worker shell, and Worker JavaScript backends with matching `none`, `all`, or
   custom egress policies.

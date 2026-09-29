@@ -1,0 +1,41 @@
+{
+  // Example: a Workspace whose Worker JavaScript backend exposes the
+  // Jev classifier (typesafe/jev) to generated modules as ws:jev.
+  // Calls go through the Workers AI binding and AI Gateway.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "computer-classify-example",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-26",
+  "compatibility_flags": ["nodejs_compat", "experimental"],
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  "vars": {
+    // AI Gateway that every Jev call is routed through.
+    "AI_GATEWAY_ID": "default"
+  },
+
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ClassifyExample",
+        "class_name": "ClassifyExample"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ClassifyExample"]
+    }
+  ]
+}

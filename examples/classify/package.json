@@ -1,0 +1,20 @@
+{
+  "name": "@example/computer-classify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Example Worker that exposes the Jev classifier to Worker JavaScript modules through a trusted ws:jev module.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "build:types": "wrangler types"
+  },
+  "dependencies": {
+    "@cloudflare/computer": "*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "wrangler": "^4.130.0"
+  }
+}
